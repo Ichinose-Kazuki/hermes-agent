@@ -1664,6 +1664,11 @@ def _is_bedrock_model_id(model: str) -> bool:
 def normalize_model_name(model: str, preserve_dots: bool = False) -> str:
     """Normalize a model name for the Anthropic API.
 
+    - Strips a trailing ``[1m]`` long-context modifier (Claude Code style).
+      The bare name is what the Anthropic API expects; the modifier is a
+      client-side hint that the caller wants the 1M-context beta (handled
+      separately in build_anthropic_kwargs, which adds the ``context-1m``
+      beta header when the modifier is present).
     - Strips 'anthropic/' prefix (OpenRouter format, case-insensitive)
     - Converts dots to hyphens in version numbers (OpenRouter uses dots,
       Anthropic uses hyphens: claude-opus-4.6 → claude-opus-4-6), unless
@@ -1672,6 +1677,8 @@ def normalize_model_name(model: str, preserve_dots: bool = False) -> str:
       regional inference profiles (``us.anthropic.claude-*``) whose dots
       are namespace separators, not version separators.
     """
+    if model.endswith("[1m]"):
+        model = model[: -len("[1m]")]
     lower = model.lower()
     if lower.startswith("anthropic/"):
         model = model[len("anthropic/"):]
@@ -2849,6 +2856,15 @@ def build_anthropic_kwargs(
     Currently only supported on native Anthropic endpoints (not third-party
     compatible ones).
     """
+    # Detect the Claude Code "[1m]" long-context modifier before
+    # normalize_model_name strips it. When present, the 1M-context beta
+    # (context-1m-2025-08-07) is sent so the gateway (Bedrock-backed in our
+    # deployment) unlocks the 1M window; the bare name reaches the API after
+    # normalize_model_name strips the modifier. Native Anthropic normally
+    # rejects this beta for some subscriptions, so we gate it on the modifier
+    # rather than the base_url the way _base_url_needs_context_1m_beta does.
+    wants_1m_context = model.endswith("[1m]")
+
     system, anthropic_messages = convert_messages_to_anthropic(
         messages, base_url=base_url, model=model
     )
@@ -3035,6 +3051,23 @@ def build_anthropic_kwargs(
         if is_oauth:
             betas.extend(_OAUTH_ONLY_BETAS)
         betas.append(_FAST_MODE_BETA)
+        kwargs["extra_headers"] = {"anthropic-beta": ",".join(betas)}
+
+    # ── 1M context (Claude Code "[1m]" modifier) ─────────────────────
+    # When the model id carries the "[1m]" long-context modifier, attach the
+    # context-1m-2025-08-07 beta so the gateway unlocks the 1M window. The
+    # per-request extra_headers override the client-level anthropic-beta, so
+    # merge onto any existing beta set (fast mode above) and include the
+    # OAuth-only betas the request would otherwise carry at client level.
+    if wants_1m_context and not drop_context_1m_beta:
+        betas = list(_common_betas_for_base_url(
+            base_url,
+            drop_context_1m_beta=drop_context_1m_beta,
+        ))
+        if is_oauth:
+            betas.extend(_OAUTH_ONLY_BETAS)
+        if _CONTEXT_1M_BETA not in betas:
+            betas.append(_CONTEXT_1M_BETA)
         kwargs["extra_headers"] = {"anthropic-beta": ",".join(betas)}
 
     return kwargs
