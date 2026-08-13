@@ -422,6 +422,20 @@ def normalize_model_for_provider(model_input: str, target_provider: str) -> str:
 
     provider = _normalize_provider_alias(target_provider)
 
+    # The Claude Code "[1m]" long-context modifier is meaningful only on the
+    # anthropic_messages wire, where build_anthropic_kwargs detects it on the
+    # un-stripped model name and turns it into the context-1m beta header. For
+    # custom providers (custom / custom:<name>, chat_completions by default) no
+    # gateway speaks "[1m]" — leaving it in makes the gateway reject the model
+    # as unknown (e.g. a LiteLLM gateway returns 403 "team not allowed to
+    # access model" for "nvidia/GLM-5.2-NVFP4[1m]" while accepting the bare
+    # "nvidia/GLM-5.2-NVFP4"). Strip it up front for the custom provider family;
+    # the anthropic provider keeps it (so build_anthropic_kwargs can detect
+    # wants_1m_context) and normalize_model_name strips it again idempotently.
+    if provider == "custom" or provider.startswith("custom:"):
+        if name.endswith("[1m]"):
+            name = name[: -len("[1m]")]
+
     # --- Aggregators: need vendor/model format ---
     if provider in _AGGREGATOR_PROVIDERS:
         return _prepend_vendor(name)
