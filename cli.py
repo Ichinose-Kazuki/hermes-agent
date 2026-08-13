@@ -8914,17 +8914,37 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin, CLIBillingMixin):
         return lines
 
     def _open_model_picker(self, providers: list, current_model: str, current_provider: str, user_provs=None, custom_provs=None) -> None:
-        """Open prompt_toolkit-native /model picker modal."""
+        """Open prompt_toolkit-native /model picker modal.
+
+        Single-stage: every authenticated provider's models are folded into one
+        flat list and shown directly (no "select provider first" step). Each
+        model remembers which provider it came from so /model can route the
+        selection through switch_model with the right explicit_provider. The
+        first occurrence of a duplicate model name wins (kept in provider
+        order); the current provider's models are already first in the list
+        from list_authenticated_providers, so its models take precedence.
+        """
         self._capture_modal_input_snapshot()
-        default_idx = next((i for i, p in enumerate(providers) if p.get("is_current")), 0)
+        flat_models: list[str] = []
+        model_to_provider: dict[str, str] = {}
+        for p in providers:
+            slug = p.get("slug", "")
+            for m in p.get("models", []):
+                if m not in model_to_provider:
+                    model_to_provider[m] = slug
+                    flat_models.append(m)
+        # Default the cursor to the current model if it's in the flat list.
+        default_idx = next((i for i, m in enumerate(flat_models) if m == current_model), 0)
         self._model_picker_state = {
-            "stage": "provider",
-            "providers": providers,
+            "stage": "model",
+            "flat_models": flat_models,
+            "model_to_provider": model_to_provider,
             "selected": default_idx,
             "current_model": current_model,
             "current_provider": current_provider,
             "user_provs": user_provs,
             "custom_provs": custom_provs,
+            "providers": providers,
         }
         self._invalidate(min_interval=0.0)
 
@@ -9237,74 +9257,47 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin, CLIBillingMixin):
         if not state:
             return
         selected = state.get("selected", 0)
-        stage = state.get("stage")
-        if stage == "provider":
-            providers = state.get("providers") or []
-            if selected >= len(providers):
-                self._close_model_picker()
-                return
-            provider_data = providers[selected]
-            # Use the curated model list from list_authenticated_providers()
-            # (same lists as `hermes model` and gateway pickers).
-            # Only fall back to the live provider catalog when the curated
-            # list is empty (e.g. user-defined endpoints with no curated list).
-            model_list = provider_data.get("models", [])
-            if not model_list:
-                try:
-                    from hermes_cli.models import provider_model_ids
-                    live = provider_model_ids(provider_data["slug"])
-                    if live:
-                        model_list = live
-                except Exception:
-                    pass
-            state["stage"] = "model"
-            state["provider_data"] = provider_data
-            state["model_list"] = model_list
-            state["selected"] = 0
-            self._invalidate(min_interval=0.0)
-            return
-        if stage == "model":
-            provider_data = state.get("provider_data") or {}
-            model_list = state.get("model_list") or []
-            back_idx = len(model_list)
-            cancel_idx = len(model_list) + 1
-            if selected == back_idx:
-                state["stage"] = "provider"
-                state["selected"] = next((i for i, p in enumerate(state.get("providers") or []) if p.get("slug") == provider_data.get("slug")), 0)
-                self._invalidate(min_interval=0.0)
-                return
-            if selected >= cancel_idx:
-                self._close_model_picker()
-                return
-            if selected < len(model_list):
-                from hermes_cli.model_switch import switch_model
-                chosen_model = model_list[selected]
-                result = switch_model(
-                    raw_input=chosen_model,
-                    current_provider=self.provider or "",
-                    current_model=self.model or "",
-                    current_base_url=self.base_url or "",
-                    current_api_key=self.api_key or "",
-                    is_global=persist_global,
-                    explicit_provider=provider_data.get("slug"),
-                    user_providers=state.get("user_provs"),
-                    custom_providers=state.get("custom_provs"),
-                )
-                # Capture before close — picker state is cleared on close.
-                _picker_custom_provs = state.get("custom_provs")
-                self._close_model_picker()
-                if getattr(self, "_app", None):
-                    threading.Thread(
-                        target=self._confirm_and_apply_model_switch_result,
-                        args=(result, persist_global, _picker_custom_provs),
-                        daemon=True,
-                    ).start()
-                else:
-                    self._confirm_and_apply_model_switch_result(
-                        result, persist_global, custom_providers=_picker_custom_provs
-                    )
-                return
+        # Single-stage: the flat model list. "Cancel" sits at the end; there
+        # is no "← Back" because there's no provider stage to return to.
+        flat_models = state.get("flat_models", []) or []
+        model_to_provider = state.get("model_to_provider", {}) or {}
+        cancel_idx = len(flat_models)
+        if selected >= cancel_idx:
             self._close_model_picker()
+            return
+        if selected < len(flat_models):
+            from hermes_cli.model_switch import switch_model
+            chosen_model = flat_models[selected]
+            # Route through switch_model with the provider this model came
+            # from in the flat list, so resolve_runtime_provider lands on the
+            # right endpoint/credentials instead of re-deriving from the name.
+            chosen_provider = model_to_provider.get(chosen_model, self.provider or "")
+            result = switch_model(
+                raw_input=chosen_model,
+                current_provider=self.provider or "",
+                current_model=self.model or "",
+                current_base_url=self.base_url or "",
+                current_api_key=self.api_key or "",
+                is_global=persist_global,
+                explicit_provider=chosen_provider,
+                user_providers=state.get("user_provs"),
+                custom_providers=state.get("custom_provs"),
+            )
+            # Capture before close — picker state is cleared on close.
+            _picker_custom_provs = state.get("custom_provs")
+            self._close_model_picker()
+            if getattr(self, "_app", None):
+                threading.Thread(
+                    target=self._confirm_and_apply_model_switch_result,
+                    args=(result, persist_global, _picker_custom_provs),
+                    daemon=True,
+                ).start()
+            else:
+                self._confirm_and_apply_model_switch_result(
+                    result, persist_global, custom_providers=_picker_custom_provs
+                )
+            return
+        self._close_model_picker()
 
     def _handle_model_switch(self, cmd_original: str):
         """Handle /model command — switch model.
@@ -15749,10 +15742,8 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin, CLIBillingMixin):
             state = self._model_picker_state
             if not state:
                 return
-            if state.get("stage") == "provider":
-                max_idx = len(state.get("providers") or [])
-            else:
-                max_idx = len(state.get("model_list") or []) + 1
+            # Single-stage: the flat model list, with "Cancel" at the end.
+            max_idx = len(state.get("flat_models") or [])
             state["selected"] = min(max_idx, state.get("selected", 0) + 1)
             event.app.invalidate()
 
@@ -16925,28 +16916,18 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin, CLIBillingMixin):
             state = cli_ref._model_picker_state
             if not state:
                 return []
-            stage = state.get("stage", "provider")
-            if stage == "provider":
-                title = "⚙ Model Picker — Select Provider"
-                choices = []
-                _providers = state.get("providers")
-                for p in _providers if isinstance(_providers, list) else []:
-                    count = p.get("total_models", len(p.get("models", [])))
-                    label = f"{p['name']} ({count} model{'s' if count != 1 else ''})"
-                    if p.get("is_current"):
-                        label += "  ← current"
-                    choices.append(label)
-                choices.append("Cancel")
-                hint = f"Current: {state.get('current_model', 'unknown')} on {state.get('current_provider', 'unknown')}"
+            # Single-stage: one flat list of every authenticated provider's
+            # models. The two-stage provider→model picker was removed because
+            # the sandbox only ever has a couple of authenticated providers
+            # with short model lists, making the provider step pure friction.
+            flat_models = state.get("flat_models", []) or []
+            title = "⚙ Model Picker"
+            choices = list(flat_models) + ["Cancel"]
+            current_model = state.get("current_model", "")
+            if current_model and current_model in flat_models:
+                hint = f"Current: {current_model} ({len(flat_models)} models)"
             else:
-                provider_data = state.get("provider_data") or {}
-                model_list = state.get("model_list") or []
-                title = f"⚙ Model Picker — {provider_data.get('name', provider_data.get('slug', 'Provider'))}"
-                choices = list(model_list) + ["← Back", "Cancel"]
-                if model_list:
-                    hint = f"Select a model ({len(model_list)} available)"
-                else:
-                    hint = "No models listed for this provider. Use Back or Cancel."
+                hint = f"Current: {current_model or 'unknown'} ({len(flat_models)} models)"
 
             box_width = _panel_box_width(title, [hint] + choices, min_width=46, max_width=84)
             inner_text_width = max(8, box_width - 6)
