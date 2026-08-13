@@ -447,6 +447,15 @@ def normalize_model_for_provider(model_input: str, target_provider: str) -> str:
         bare = _strip_matching_provider_prefix(name, provider)
         if "/" in bare:
             return bare
+        # Bedrock/regional inference-profile IDs (e.g. "global.anthropic.
+        # claude-haiku-4-5-...", "us.anthropic.claude-sonnet-4-5-v1:0") use
+        # dots as namespace separators, not version separators -- hyphenating
+        # them produces a string the gateway does not recognize and rejects.
+        # Reuse anthropic_adapter's detector rather than duplicating it here.
+        from agent.anthropic_adapter import _is_bedrock_model_id
+
+        if _is_bedrock_model_id(bare):
+            return bare
         return _dots_to_hyphens(bare)
 
     # --- Copilot / Copilot ACP: delegate to the Copilot-specific
