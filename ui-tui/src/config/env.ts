@@ -51,6 +51,12 @@ export const MOUSE_TRACKING: MouseTrackingMode = resolvedBootMouseEnabled ? 'all
 
 export const NO_CONFIRM_DESTRUCTIVE = truthy(process.env.HERMES_TUI_NO_CONFIRM)
 
+// Skip the intro banner (logo + caduceus + session panel) the TUI renders on
+// the first intro message. For sandbox deployments running a fixed model the
+// big art panel is noise; this drops it so the session opens straight into
+// the conversation. Off by default to preserve the upstream welcome screen.
+export const NO_INTRO_BANNER = truthy(process.env.HERMES_TUI_NO_INTRO_BANNER)
+
 // Set by the dashboard PTY launcher. This is intentionally narrower than
 // INLINE_MODE: users can opt into inline terminal rendering locally, but the
 // browser-embedded TUI has no healthy restart path after an idle exit.
