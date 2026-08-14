@@ -16929,7 +16929,13 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin, CLIBillingMixin):
             else:
                 hint = f"Current: {current_model or 'unknown'} ({len(flat_models)} models)"
 
-            box_width = _panel_box_width(title, [hint] + choices, min_width=46, max_width=84)
+            # Account for the selection prefix ("❯ " / "  ") prepended to each
+            # choice at render time (16961 below) — _panel_box_width sizes off
+            # the raw model IDs, so without this a long model id (e.g. the
+            # 47-char "global.anthropic.claude-haiku-4-5-20251001-v1:0") exceeds
+            # inner_text_width and wraps mid-row, breaking the left border.
+            width_lines = [hint] + ["❯ " + c for c in choices]
+            box_width = _panel_box_width(title, width_lines, min_width=46, max_width=84)
             inner_text_width = max(8, box_width - 6)
             selected = state.get("selected", 0)
 
