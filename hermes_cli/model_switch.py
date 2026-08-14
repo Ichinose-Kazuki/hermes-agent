@@ -2432,6 +2432,22 @@ def list_authenticated_providers(
                 model_ids = curated.get(hermes_slug, []) or curated.get(pid, [])
                 if hermes_slug in _MODELS_DEV_PREFERRED:
                     model_ids = _merge_with_models_dev(hermes_slug, model_ids)
+        # A providers.<overlay>.models block with discover_models: false
+        # narrows the picker to exactly that set — mirrors section 1/3/4's
+        # whitelist semantics. Read the declaration here and, when it
+        # opts out of discovery, use it verbatim instead of the live/curated
+        # merge above.
+        configured_models: list[str] = []
+        discover_models_cfg = True
+        if isinstance(user_providers, dict):
+            configured = user_providers.get(hermes_slug)
+            if isinstance(configured, dict):
+                configured_models = _declared_model_ids(configured.get("models"))
+                discover_models_cfg = configured.get("discover_models", True)
+        if not discover_models_cfg and configured_models:
+            model_ids = configured_models
+        elif configured_models:
+            model_ids = list(dict.fromkeys([*configured_models, *model_ids]))
         total = len(model_ids)
         if hermes_slug in _UNCAPPED_PICKER_PROVIDERS:
             top = model_ids  # Aggregator: show full catalog regardless of max_models
