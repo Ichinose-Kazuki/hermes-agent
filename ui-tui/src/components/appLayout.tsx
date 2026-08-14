@@ -11,7 +11,7 @@ import { $isBlocked, $overlayState, patchOverlayState } from '../app/overlayStor
 import { $petBox } from '../app/petFlashStore.js'
 import { $uiState } from '../app/uiStore.js'
 import { usePet } from '../app/usePet.js'
-import { INLINE_MODE, NO_INTRO_BANNER, SHOW_FPS, TERMUX_TUI_MODE } from '../config/env.js'
+import { COMPACT_INTRO, INLINE_MODE, NO_INTRO_BANNER, SHOW_FPS, TERMUX_TUI_MODE } from '../config/env.js'
 import { PLACEHOLDER } from '../content/placeholders.js'
 import { prevRenderedMsg } from '../domain/blockLayout.js'
 import {
@@ -206,10 +206,16 @@ const TranscriptPane = memo(function TranscriptPane({
               {row.msg.kind === 'intro' ? (
                 NO_INTRO_BANNER ? null : (
                   <Box flexDirection="column" paddingTop={1}>
-                    <Banner maxWidth={Math.max(1, composer.cols - 2)} t={ui.theme} />
+                    {/* COMPACT_INTRO drops the big logo art Banner and passes
+                        compact to SessionPanel so its sections collapse by
+                        default and the caduceus hero column is omitted. */}
+                    {COMPACT_INTRO ? null : (
+                      <Banner maxWidth={Math.max(1, composer.cols - 2)} t={ui.theme} />
+                    )}
 
                     {row.msg.info && (
                       <SessionPanel
+                        compact={COMPACT_INTRO}
                         info={row.msg.info}
                         maxWidth={Math.max(1, composer.cols - 2)}
                         sid={ui.sid}

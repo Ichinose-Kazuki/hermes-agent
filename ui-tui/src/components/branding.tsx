@@ -209,12 +209,14 @@ const SKELETON_ROWS: readonly (readonly [number, number])[] = [
 const SKILLS_MAX = 8
 const TOOLSETS_MAX = 8
 
-export function SessionPanel({ info, maxWidth, sid, t }: SessionPanelProps) {
+export function SessionPanel({ info, maxWidth, sid, t, compact }: SessionPanelProps) {
   const term = useStdout().stdout?.columns ?? 100
   const cols = Math.max(20, Math.min(term, maxWidth ?? term))
   const heroLines = caduceus(t.color, t.bannerHero || undefined)
   const leftW = Math.min((artWidth(heroLines) || CADUCEUS_WIDTH) + 4, Math.floor(cols * 0.4))
-  const wide = cols >= 90 && leftW + 40 < cols
+  // Compact mode drops the caduceus hero column entirely — only the info
+  // track renders, so wide is always false here.
+  const wide = !compact && cols >= 90 && leftW + 40 < cols
   const w = Math.max(20, wide ? cols - leftW - 14 : cols - 12)
   const lineBudget = Math.max(12, w - 2)
   const strip = (s: string) => (s.endsWith('_tools') ? s.slice(0, -6) : s)
@@ -226,7 +228,9 @@ export function SessionPanel({ info, maxWidth, sid, t }: SessionPanelProps) {
   const listFade = mix(t.color.muted, t.color.text, 0.5)
 
   // ── Local collapse state for each section ──
-  const [toolsOpen, setToolsOpen] = useState(true)
+  // Compact mode collapses every section by default (tools included) so
+  // the panel reads as a one-line summary until the user expands one.
+  const [toolsOpen, setToolsOpen] = useState(!compact)
   const [skillsOpen, setSkillsOpen] = useState(false)
   const [systemOpen, setSystemOpen] = useState(false)
   const [mcpOpen, setMcpOpen] = useState(false)
@@ -559,4 +563,5 @@ interface SessionPanelProps {
   maxWidth?: number
   sid?: string | null
   t: Theme
+  compact?: boolean
 }

@@ -57,6 +57,13 @@ export const NO_CONFIRM_DESTRUCTIVE = truthy(process.env.HERMES_TUI_NO_CONFIRM)
 // the conversation. Off by default to preserve the upstream welcome screen.
 export const NO_INTRO_BANNER = truthy(process.env.HERMES_TUI_NO_INTRO_BANNER)
 
+// Compact intro: replace the big logo art + caduceus hero column with a
+// single brand line (icon + name + version), and collapse every session
+// panel section (tools/skills/system/MCP) by default so the panel reads as
+// a one-line summary until expanded. Keeps the session info (model/cwd/counts)
+// at Claude Code's density without the large art. Off by default.
+export const COMPACT_INTRO = truthy(process.env.HERMES_TUI_COMPACT_INTRO)
+
 // Set by the dashboard PTY launcher. This is intentionally narrower than
 // INLINE_MODE: users can opt into inline terminal rendering locally, but the
 // browser-embedded TUI has no healthy restart path after an idle exit.
