@@ -58,25 +58,30 @@ Use the `ddgs` command via `terminal` when it exists. This is the preferred path
 
 ```bash
 # Text search
-ddgs text -q "python async programming" -m 5
+ddgs text -q "python async programming" -m 5 -b brave
 
 # News search
-ddgs news -q "artificial intelligence" -m 5
+ddgs news -q "artificial intelligence" -m 5 -b brave
 
 # Image search
-ddgs images -q "landscape photography" -m 10
+ddgs images -q "landscape photography" -m 10 -b brave
 
 # Video search
-ddgs videos -q "python tutorial" -m 5
+ddgs videos -q "python tutorial" -m 5 -b brave
 
 # With region filter
-ddgs text -q "best restaurants" -m 5 -r us-en
+ddgs text -q "best restaurants" -m 5 -r us-en -b brave
 
 # Recent results only (d=day, w=week, m=month, y=year)
-ddgs text -q "latest AI news" -m 5 -t w
+ddgs text -q "latest AI news" -m 5 -t w -b brave
 
-# JSON output for parsing
-ddgs text -q "fastapi tutorial" -m 5 -o json
+# JSON output to a file (NOT stdout): -o writes to a file, never stdout.
+# The ddgs CLI has no stdout-JSON mode — `-o json` (bare format name) auto-saves
+# to a timestamped file in the cwd; `-o <path>` saves to that path. Write under
+# a tmp/<session-id>/ directory (NOT /tmp) and read the file back.
+mkdir -p "tmp/$SESSION_ID"
+ddgs text -q "fastapi tutorial" -m 5 -o "tmp/$SESSION_ID/ddgs_result.json" -b brave
+cat "tmp/$SESSION_ID/ddgs_result.json"
 ```
 
 ### CLI Flags
@@ -88,7 +93,8 @@ ddgs text -q "fastapi tutorial" -m 5 -o json
 | `-r` | Region | `-r us-en` |
 | `-t` | Time limit | `-t w` (week) |
 | `-s` | Safe search | `-s off` |
-| `-o` | Output format | `-o json` |
+| `-b` | Backend (use `brave` — `auto` may fail to fall back to brave) | `-b brave` |
+| `-o` | Output file (writes to a file, never stdout) | `-o tmp/$SESSION_ID/ddgs_result.json` |
 
 ## Method 2: Python API (Only After Verification)
 
@@ -190,7 +196,9 @@ DuckDuckGo returns titles, URLs, and snippets — not full page content. To get 
 CLI example:
 
 ```bash
-ddgs text -q "fastapi deployment guide" -m 3 -o json
+mkdir -p "tmp/$SESSION_ID"
+ddgs text -q "fastapi deployment guide" -m 3 -o "tmp/$SESSION_ID/ddgs_result.json" -b brave
+cat "tmp/$SESSION_ID/ddgs_result.json"
 ```
 
 Python example, only after verifying `ddgs` is installed in that runtime:
@@ -214,6 +222,8 @@ Then extract the best URL with `web_extract` or another content-retrieval tool.
 - **Availability**: DuckDuckGo may block requests from some cloud IPs. If searches return empty, try different keywords or wait a few seconds.
 - **Field variability**: Return fields may vary between results or `ddgs` versions. Use `.get()` for optional fields to avoid `KeyError`.
 - **Separate runtimes**: A successful `ddgs` install in terminal does not automatically mean `execute_code` can import it.
+- **Backend `auto` may fail to fall back to brave**: Always pass `-b brave` explicitly. The `auto` backend sometimes does not fall back to brave when the default backend is unavailable, returning empty results.
+- **`-o` writes to a file, never stdout**: There is no stdout-JSON mode. `-o json` (bare format name) auto-saves to a timestamped file in the cwd; `-o <path>` saves to that path. To get JSON, write under `tmp/<session-id>/` and `cat` the file.
 
 ## Troubleshooting
 
@@ -222,6 +232,8 @@ Then extract the best URL with `web_extract` or another content-retrieval tool.
 | `ddgs: command not found` | CLI not installed in the shell environment | Install `ddgs`, or use built-in web/browser tools instead |
 | `ModuleNotFoundError: No module named 'ddgs'` | Python runtime does not have the package installed | Do not use Python DDGS there until that runtime is prepared |
 | Search returns nothing | Temporary rate limiting or poor query | Wait a few seconds, retry, or adjust the query |
+| Search returns nothing (reliably) | `auto` backend failed to fall back to brave | Pass `-b brave` explicitly |
+| `-o json` prints nothing to stdout | `-o` writes to a file, never stdout | Use `-o "tmp/$SESSION_ID/ddgs_result.json"` then `cat` the file |
 | CLI works but `execute_code` import fails | Terminal and `execute_code` are different runtimes | Keep using CLI, or separately prepare the Python runtime |
 
 ## Pitfalls
