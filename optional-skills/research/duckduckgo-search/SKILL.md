@@ -7,16 +7,17 @@ license: MIT
 platforms: [linux, macos, windows]
 metadata:
   hermes:
-    tags: [search, duckduckgo, web-search, free, fallback]
+    tags: [search, duckduckgo, web-search, free]
     related_skills: [arxiv]
-    fallback_for_toolsets: [web]
 ---
 
 # DuckDuckGo Search
 
 Free web search using DuckDuckGo. **No API key required.**
 
-Preferred when `web_search` is unavailable or unsuitable (for example when `FIRECRAWL_API_KEY` is not set). Can also be used as a standalone search path when DuckDuckGo results are specifically desired.
+This is the **preferred web search method** — use `ddgs` first for general web
+search. It needs no API key and works out of the box (the `ddgs` CLI and
+package are preinstalled in the sandbox).
 
 ## Detection Flow
 
@@ -28,10 +29,9 @@ command -v ddgs >/dev/null && echo "DDGS_CLI=installed" || echo "DDGS_CLI=missin
 ```
 
 Decision tree:
-1. If `ddgs` CLI is installed, prefer `terminal` + `ddgs`
-2. If `ddgs` CLI is missing, do not assume `execute_code` can import `ddgs`
-3. If the user wants DuckDuckGo specifically, install `ddgs` first in the relevant environment
-4. Otherwise fall back to built-in web/browser tools
+1. `ddgs` CLI is preinstalled — use `terminal` + `ddgs` first for any web search.
+2. If for some reason `ddgs` CLI is missing, do not assume `execute_code` can import `ddgs` (separate runtimes).
+3. Reinstall `ddgs` only if it is genuinely missing from the environment.
 
 Important runtime note:
 - Terminal and `execute_code` are separate runtimes
@@ -40,7 +40,7 @@ Important runtime note:
 
 ## Installation
 
-Install `ddgs` only when DuckDuckGo search is specifically needed and the runtime does not already provide it.
+`ddgs` is preinstalled in this sandbox. The install steps below are only for environments where it is missing.
 
 ```bash
 # Python package + CLI entrypoint
@@ -54,7 +54,7 @@ If a workflow depends on Python imports, verify that same runtime can import `dd
 
 ## Method 1: CLI Search (Preferred)
 
-Use the `ddgs` command via `terminal` when it exists. This is the preferred path because it avoids assuming the `execute_code` sandbox has the `ddgs` Python package installed.
+This is the primary web-search path. Use the `ddgs` command via `terminal` — it is preinstalled, needs no API key, and avoids assuming `execute_code` has the `ddgs` Python package.
 
 ```bash
 # Text search
@@ -229,7 +229,7 @@ Then extract the best URL with `web_extract` or another content-retrieval tool.
 
 | Problem | Likely Cause | What To Do |
 |---------|--------------|------------|
-| `ddgs: command not found` | CLI not installed in the shell environment | Install `ddgs`, or use built-in web/browser tools instead |
+| `ddgs: command not found` | CLI missing from the shell environment | Reinstall `ddgs` (`pip install ddgs`); it should normally be preinstalled |
 | `ModuleNotFoundError: No module named 'ddgs'` | Python runtime does not have the package installed | Do not use Python DDGS there until that runtime is prepared |
 | Search returns nothing | Temporary rate limiting or poor query | Wait a few seconds, retry, or adjust the query |
 | Search returns nothing (reliably) | `auto` backend failed to fall back to brave | Pass `-b brave` explicitly |
