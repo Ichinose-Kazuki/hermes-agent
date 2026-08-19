@@ -284,6 +284,14 @@ def check_for_updates() -> Optional[int]:
     if behind but the count is unknown, ``0`` if up-to-date, or ``None`` if
     the check failed or doesn't apply. Cached for 6 hours.
     """
+    # Allow operators (e.g. the claude-sandbox nix wrapper) to suppress the
+    # startup update check entirely. Returns None so every caller — the
+    # background prefetch thread, the banner badge, the /api/hermes/update
+    # check REST endpoint, and the CLI update subcommand — sees "no update
+    # info" without issuing git ls-remote / git fetch against the upstream.
+    if os.environ.get("HERMES_NO_UPDATE_CHECK") == "1":
+        return None
+
     hermes_home = get_hermes_home()
     cache_file = hermes_home / ".update_check"
     embedded_rev = os.environ.get("HERMES_REVISION") or None

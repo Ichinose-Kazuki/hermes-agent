@@ -58,5 +58,17 @@ def test_prefetch_non_blocking():
         assert banner._update_result == 5
 
 
+def test_check_for_updates_disabled_via_env(monkeypatch):
+    """HERMES_NO_UPDATE_CHECK=1 short-circuits before any git subprocess runs."""
+    from hermes_cli.banner import check_for_updates
+
+    monkeypatch.setenv("HERMES_NO_UPDATE_CHECK", "1")
+    with patch("hermes_cli.banner.subprocess.run") as mock_run:
+        result = check_for_updates()
+
+    assert result is None
+    mock_run.assert_not_called()
+
+
 
 
