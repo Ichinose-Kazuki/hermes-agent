@@ -6,8 +6,10 @@ import {
   dismissSensitivePrompt,
   handleIdleHotkeyExit,
   shouldAllowIdleHotkeyExit,
+  shouldConfirmIdleHotkeyExit,
   shouldFallThroughForScroll
 } from '../app/useInputHandlers.js'
+import { DOUBLE_EXIT_MS } from '../config/timing.js'
 
 const baseKey = {
   downArrow: false,
@@ -56,6 +58,26 @@ describe('shouldAllowIdleHotkeyExit', () => {
 
   it('disables idle exit hotkeys in dashboard chat', () => {
     expect(shouldAllowIdleHotkeyExit(true)).toBe(false)
+  })
+})
+
+describe('shouldConfirmIdleHotkeyExit — a lone Ctrl+C / Ctrl+D must not drop the session', () => {
+  it('arms on the first press instead of exiting', () => {
+    expect(shouldConfirmIdleHotkeyExit(0, 1_000)).toBe(true)
+  })
+
+  it('exits on a second press inside the window', () => {
+    expect(shouldConfirmIdleHotkeyExit(1_000, 1_000 + DOUBLE_EXIT_MS - 1)).toBe(false)
+  })
+
+  it('exits on a second press exactly at the window edge', () => {
+    expect(shouldConfirmIdleHotkeyExit(1_000, 1_000 + DOUBLE_EXIT_MS)).toBe(false)
+  })
+
+  // Without expiry an armed prompt would persist indefinitely, turning a
+  // single press minutes later into an unannounced exit.
+  it('re-arms once the window has passed', () => {
+    expect(shouldConfirmIdleHotkeyExit(1_000, 1_000 + DOUBLE_EXIT_MS + 1)).toBe(true)
   })
 })
 

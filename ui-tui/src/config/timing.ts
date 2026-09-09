@@ -18,3 +18,10 @@ export const RESIZE_COALESCE_MS = 32
 // enough that two unrelated Escs — dismissing a completion, then a
 // selection — don't silently clear the composer.
 export const DOUBLE_ESC_MS = 500
+
+// A second Ctrl+C (or second Ctrl+D) within this window leaves the TUI; a
+// lone press only arms the prompt. Far longer than DOUBLE_ESC_MS because
+// this is a deliberate confirmation the user reads and answers, not a
+// double-tap gesture — but still short enough that an armed prompt cannot
+// linger and turn a much later single press into an exit.
+export const DOUBLE_EXIT_MS = 2000

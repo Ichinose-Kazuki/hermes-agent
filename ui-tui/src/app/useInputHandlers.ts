@@ -3,7 +3,7 @@ import { useStore } from '@nanostores/react'
 import { useEffect, useRef } from 'react'
 
 import { DASHBOARD_TUI_MODE } from '../config/env.js'
-import { DOUBLE_ESC_MS, TYPING_IDLE_MS } from '../config/timing.js'
+import { DOUBLE_ESC_MS, DOUBLE_EXIT_MS, TYPING_IDLE_MS } from '../config/timing.js'
 import { applyCompletion } from '../domain/slash.js'
 import type {
   ApprovalRespondResponse,
@@ -34,6 +34,20 @@ const isCtrl = (key: { ctrl: boolean }, ch: string, target: string) => key.ctrl 
 const DASHBOARD_NEW_SESSION_MESSAGE = 'starting a fresh dashboard chat...'
 
 export const shouldAllowIdleHotkeyExit = (dashboardTuiMode = DASHBOARD_TUI_MODE) => !dashboardTuiMode
+
+export const IDLE_EXIT_CONFIRM_MESSAGE = 'press again to exit'
+
+/**
+ * Whether this idle-exit keypress should only arm the prompt rather than
+ * leave. True for a first press, and again once an armed prompt has expired,
+ * so a press long after the first cannot exit on its own.
+ *
+ * `lastPressAt` is 0 when nothing is armed. Callers track it per key, so a
+ * Ctrl+C followed by a Ctrl+D arms twice instead of exiting — the two are
+ * separate intents and neither should complete the other.
+ */
+export const shouldConfirmIdleHotkeyExit = (lastPressAt: number, now: number) =>
+  lastPressAt === 0 || now - lastPressAt > DOUBLE_EXIT_MS
 
 export function handleIdleHotkeyExit(
   actions: Pick<InputHandlerActions, 'die' | 'sys'>,
@@ -326,6 +340,33 @@ export function useInputHandlers(ctx: InputHandlerContext): InputHandlerResult {
   // otherwise no way to throw away a half-typed prompt. The draft is pushed
   // to history first so Up recalls it.
   const lastEscRef = useRef(0)
+  // Timestamp of the last unconfirmed Ctrl+C / Ctrl+D, tracked per key so
+  // neither completes the other's confirmation. 0 = nothing armed.
+  const lastExitPressRef = useRef({ c: 0, d: 0 })
+
+  // Arm on a first press, leave on a second within DOUBLE_EXIT_MS. Both
+  // hotkeys land here so the confirmation reads the same either way, and the
+  // dashboard's fresh-chat path stays behind handleIdleHotkeyExit.
+  const requestIdleExit = (hotkey: 'c' | 'd') => {
+    const now = Date.now()
+    const sid = getUiState().sid
+
+    if (shouldConfirmIdleHotkeyExit(lastExitPressRef.current[hotkey], now)) {
+      lastExitPressRef.current[hotkey] = now
+
+      return actions.sys(IDLE_EXIT_CONFIRM_MESSAGE)
+    }
+
+    lastExitPressRef.current[hotkey] = 0
+
+    return handleIdleHotkeyExit(actions, DASHBOARD_TUI_MODE, () => {
+      gateway.gw.publishLocalEvent({
+        payload: { reason: 'idle_exit_hotkey' },
+        session_id: sid ?? undefined,
+        type: 'dashboard.new_session_requested'
+      })
+    })
+  }
 
   useInput((ch, key) => {
     const live = getUiState()
@@ -608,23 +649,11 @@ export function useInputHandlers(ctx: InputHandlerContext): InputHandlerResult {
         return cActions.clearIn()
       }
 
-      return handleIdleHotkeyExit(actions, DASHBOARD_TUI_MODE, () => {
-        gateway.gw.publishLocalEvent({
-          payload: { reason: 'idle_exit_hotkey' },
-          session_id: live.sid ?? undefined,
-          type: 'dashboard.new_session_requested'
-        })
-      })
+      return requestIdleExit('c')
     }
 
     if (isAction(key, ch, 'd')) {
-      return handleIdleHotkeyExit(actions, DASHBOARD_TUI_MODE, () => {
-        gateway.gw.publishLocalEvent({
-          payload: { reason: 'idle_exit_hotkey' },
-          session_id: live.sid ?? undefined,
-          type: 'dashboard.new_session_requested'
-        })
-      })
+      return requestIdleExit('d')
     }
 
     if (isAction(key, ch, 'l')) {
