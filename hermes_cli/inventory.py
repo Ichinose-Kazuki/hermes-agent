@@ -290,12 +290,19 @@ def build_model_options_payload(
     """Build the shared API-server/dashboard/TUI model-options payload.
 
     This wraps ``build_models_payload`` with the stable picker shape and the
-    safe custom-provider probe policy used for normal GUI/TUI opens:
+    custom-provider probe policy used for GUI/TUI opens:
 
-    - normal open: probe only the current custom provider so offline saved
-      endpoints do not block the picker
-    - explicit refresh: probe every custom provider while busting the model
-      cache so live catalogs repopulate fully
+    - every open probes all custom providers, so a provider whose catalog
+      lives only on its endpoint (no ``models:`` in config) lists its models
+      without the user having to ask for a refresh
+    - explicit refresh additionally busts the model cache so live catalogs
+      repopulate from scratch
+
+    Probing on a normal open costs a request per custom provider, and an
+    unreachable endpoint delays the picker until that request times out. A
+    provider that lists no models at all is the worse failure: it looks like
+    the config was ignored, and nothing on screen suggests a refresh would
+    help.
     """
     refresh = bool(refresh)
     return build_models_payload(
@@ -308,7 +315,7 @@ def build_model_options_payload(
         capabilities=True,
         featured=True,
         refresh=refresh,
-        probe_custom_providers=refresh,
+        probe_custom_providers=True,
         probe_current_custom_provider=not refresh,
     )
 
